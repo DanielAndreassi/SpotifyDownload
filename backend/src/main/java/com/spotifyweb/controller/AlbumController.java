@@ -68,13 +68,13 @@ public class AlbumController {
         logger.info("getAlbumTracks chamado para usuário {} e álbum {}", authentication.getName(), albumId);
         try {
             User user = getUserFromAuth(authentication);
-            return ResponseEntity.ok(spotifyService.getAlbumTracks(user, albumId));
+            return ResponseEntity.ok(spotifyService.getAlbumDetail(user, albumId));
         } catch (IllegalStateException e) {
             logger.error("Erro de autenticação em getAlbumTracks", e);
             return ResponseEntity.status(401).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             logger.error("Falha ao buscar faixas do álbum {}", albumId, e);
-            return ResponseEntity.badRequest().body(Map.of("error", "Não foi possível carregar faixas do álbum: " + e.getMessage()));
+            return ResponseEntity.badRequest().body(Map.of("error", "Não foi possível carregar detalhes do álbum: " + e.getMessage()));
         }
     }
 }

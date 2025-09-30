@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Container, Row, Col, Card, Spinner, Alert, Nav, Form, Button, Badge } from 'react-bootstrap';
+import { Container, Row, Col, Card, Spinner, Alert, Nav, Form, Button, Badge, ProgressBar } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import AppNavbar from '../components/Navbar';
 import type { Album } from '../types/Album';
+import type { DownloadProgress } from '../types/Download';
 
 interface Playlist {
     id: string;
@@ -52,6 +53,8 @@ export default function DashboardPage() {
     const [error, setError] = useState('');
     const [filter, setFilter] = useState('');
     const [downloadState, setDownloadState] = useState<DownloadState>({ message: '', type: null });
+    const [albumDownloadJob, setAlbumDownloadJob] = useState<{ jobId: string; name: string } | null>(null);
+    const [albumProgress, setAlbumProgress] = useState<DownloadProgress | null>(null);
 
     useEffect(() => {
         if (authLoading) return;
@@ -140,15 +143,71 @@ export default function DashboardPage() {
         );
     }, [albums, filter]);
 
+    useEffect(() => {
+        if (!albumDownloadJob) {
+            setAlbumProgress(null);
+            return;
+        }
+
+        let active = true;
+        let interval: ReturnType<typeof setInterval> | undefined;
+
+        const fetchProgress = async () => {
+            if (!active) return;
+            try {
+                const response = await api.get(`/downloads/status/${albumDownloadJob.jobId}`);
+                if (!active) return;
+                setAlbumProgress(response.data);
+                if (response.data.status === 'COMPLETED') {
+                    setDownloadState({ message: 'Download do álbum concluído com sucesso!', type: 'info' });
+                    setAlbumProgress(response.data);
+                    setAlbumDownloadJob(null);
+                    if (interval) clearInterval(interval);
+                    active = false;
+                } else if (response.data.status === 'FAILED') {
+                    setDownloadState({ message: response.data.errorMessage || 'O download do álbum terminou com falhas.', type: 'error' });
+                    setAlbumProgress(response.data);
+                    setAlbumDownloadJob(null);
+                    if (interval) clearInterval(interval);
+                    active = false;
+                }
+            } catch (err: any) {
+                if (!active) return;
+                const msg = err.response?.data?.error || err.message || 'Não foi possível consultar o status do download do álbum.';
+                setDownloadState({ message: msg, type: 'error' });
+                setAlbumDownloadJob(null);
+                if (interval) clearInterval(interval);
+                active = false;
+            }
+        };
+
+        fetchProgress().finally(() => {
+            if (active) {
+                interval = setInterval(fetchProgress, 3000);
+            }
+        });
+
+        return () => {
+            active = false;
+            if (interval) {
+                clearInterval(interval);
+            }
+        };
+    }, [albumDownloadJob]);
+
     const handleDownloadAlbum = async (album: Album) => {
         try {
             setDownloadState({ message: '', type: null });
+            setAlbumProgress(null);
             const response = await api.post('/download/album', { url: album.id });
             setDownloadState({ message: response.data.message || 'Download do álbum iniciado.', type: 'info' });
+            setAlbumDownloadJob({ jobId: response.data.jobId, name: album.name });
         } catch (err: any) {
             console.error('Erro ao iniciar download do álbum', err);
             const msg = err.response?.data?.error || err.message || 'Erro desconhecido';
             setDownloadState({ message: `Não foi possível iniciar o download do álbum: ${msg}`, type: 'error' });
+            setAlbumDownloadJob(null);
+            setAlbumProgress(null);
         }
     };
 
@@ -206,35 +265,60 @@ export default function DashboardPage() {
             return <Alert variant="secondary">Nenhum álbum encontrado.</Alert>;
         }
         return (
-            <Row>
-                {filteredAlbums.map((album) => (
-                    <Col key={album.id} md={6} lg={4} xl={3} className="mb-4">
-                        <Card bg="dark" text="light" className="h-100 shadow-sm border-0">
-                            <Card.Img
-                                variant="top"
-                                src={album.imageUrl || 'https://via.placeholder.com/400x400?text=Álbum'}
-                                alt={album.name}
-                                style={{ objectFit: 'cover', height: '220px' }}
-                            />
-                            <Card.Body className="d-flex flex-column">
-                                <div className="d-flex justify-content-between align-items-start mb-2">
-                                    <Card.Title className="mb-0 text-white">{album.name}</Card.Title>
-                                    <Badge bg="success">{album.totalTracks ?? 0}</Badge>
-                                </div>
-                                <Card.Text className="text-muted small mb-2">{album.artists.join(', ')}</Card.Text>
-                                {album.releaseDate && (
-                                    <Card.Text className="text-muted small">Lançamento: {album.releaseDate}</Card.Text>
+            <>
+                {albumDownloadJob && (
+                    <Alert variant="dark" className="mb-3">
+                        <div className="d-flex flex-column gap-2">
+                            <div className="d-flex justify-content-between">
+                                <span className="fw-semibold">Baixando: {albumDownloadJob.name}</span>
+                                {albumProgress && (
+                                    <span className="text-muted small">{albumProgress.completedTracks}/{albumProgress.totalTracks} músicas</span>
                                 )}
-                                <div className="mt-auto d-flex justify-content-end">
-                                    <Button variant="outline-success" size="sm" onClick={() => handleDownloadAlbum(album)}>
-                                        Baixar álbum
-                                    </Button>
-                                </div>
-                            </Card.Body>
-                        </Card>
-                    </Col>
-                ))}
-            </Row>
+                            </div>
+                            <ProgressBar
+                                now={albumProgress?.progressPercentage ?? 0}
+                                variant={albumProgress?.status === 'FAILED' ? 'danger' : 'success'}
+                                animated={albumProgress?.status === 'IN_PROGRESS'}
+                            />
+                            {albumProgress?.currentTrack && <span className="text-muted">Baixando: {albumProgress.currentTrack}</span>}
+                        </div>
+                    </Alert>
+                )}
+                <Row>
+                    {filteredAlbums.map((album) => (
+                        <Col key={album.id} md={6} lg={4} xl={3} className="mb-4">
+                            <Card bg="dark" text="light" className="h-100 shadow-sm border-0">
+                                <Link to={`/album/${album.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                                    <Card.Img
+                                        variant="top"
+                                        src={album.imageUrl || 'https://via.placeholder.com/400x400?text=Álbum'}
+                                        alt={album.name}
+                                        style={{ objectFit: 'cover', height: '220px' }}
+                                    />
+                                </Link>
+                                <Card.Body className="d-flex flex-column">
+                                    <div className="d-flex justify-content-between align-items-start mb-2">
+                                        <Card.Title className="mb-0 text-white">{album.name}</Card.Title>
+                                        <Badge bg="success">{album.totalTracks ?? 0}</Badge>
+                                    </div>
+                                    <Card.Text className="text-muted small mb-2">{album.artists.join(', ')}</Card.Text>
+                                    {album.releaseDate && (
+                                        <Card.Text className="text-muted small">Lançamento: {album.releaseDate}</Card.Text>
+                                    )}
+                                    <div className="mt-auto d-flex justify-content-between align-items-center">
+                                        <Link to={`/album/${album.id}`} className="btn btn-outline-light btn-sm">
+                                            Ver detalhes
+                                        </Link>
+                                        <Button variant="outline-success" size="sm" onClick={() => handleDownloadAlbum(album)}>
+                                            Baixar álbum
+                                        </Button>
+                                    </div>
+                                </Card.Body>
+                            </Card>
+                        </Col>
+                    ))}
+                </Row>
+            </>
         );
     };
 

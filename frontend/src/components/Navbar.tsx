@@ -20,13 +20,13 @@ export default function AppNavbar() {
                 <Navbar.Toggle aria-controls="basic-navbar-nav" />
                 <Navbar.Collapse id="basic-navbar-nav">
                     <Nav className="ms-auto d-flex align-items-center">
-                        {user && <Navbar.Text className="me-3">Signed in as: {user.displayName}</Navbar.Text>}
+                        {user && <Navbar.Text className="me-3">Logado com: {user.displayName}</Navbar.Text>}
                         
                         <Link to="/queue" className="btn btn-secondary me-3">
-                            Download Queue <Badge bg="success">{queue.length}</Badge>
+                            Fila de Dowloads <Badge bg="success">{queue.length}</Badge>
                         </Link>
                         
-                        <Button variant="outline-danger" onClick={handleLogout}>Logout</Button>
+                        <Button variant="outline-danger" onClick={handleLogout}>Sair</Button>
                     </Nav>
                 </Navbar.Collapse>
             </Container>

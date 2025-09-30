@@ -6,5 +6,6 @@ export interface DownloadProgress {
     failedTracks: number;
     status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
     currentTrack: string;
-    progress: number;
+    progressPercentage?: number;
+    errorMessage?: string;
 }

@@ -16,6 +16,7 @@
 /home/andreassi/Área de trabalho/Spotfy/spotify-downloader-web/backend/src/main/java/com/spotifyweb/repository/DownloadJobRepository.java
 /home/andreassi/Área de trabalho/Spotfy/spotify-downloader-web/backend/src/main/java/com/spotifyweb/repository/SpotifyConfigRepository.java
 /home/andreassi/Área de trabalho/Spotfy/spotify-downloader-web/backend/src/main/java/com/spotifyweb/security/JwtAuthenticationFilter.java
+/home/andreassi/Área de trabalho/Spotfy/spotify-downloader-web/backend/src/main/java/com/spotifyweb/dto/AlbumDetailDTO.java
 /home/andreassi/Área de trabalho/Spotfy/spotify-downloader-web/backend/src/main/java/com/spotifyweb/dto/SpotifyConfigDTO.java
 /home/andreassi/Área de trabalho/Spotfy/spotify-downloader-web/backend/src/main/java/com/spotifyweb/dto/DownloadRequestDTO.java
 /home/andreassi/Área de trabalho/Spotfy/spotify-downloader-web/backend/src/main/java/com/spotifyweb/dto/AddTracksRequestDTO.java

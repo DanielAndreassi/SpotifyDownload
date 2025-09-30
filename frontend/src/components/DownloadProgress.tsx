@@ -56,12 +56,12 @@ export default function DownloadProgressToasts() {
                         <small>{d.status}</small>
                     </Toast.Header>
                     <Toast.Body className="text-white">
-                        {d.status === 'IN_PROGRESS' && <p>Downloading: {d.currentTrack}</p>}
-                        {d.status === 'COMPLETED' && <p>Download finished!</p>}
-                        {d.status === 'FAILED' && <p>Download failed.</p>}
+                        {d.status === 'IN_PROGRESS' && <p>Baixando: {d.currentTrack}</p>}
+                        {d.status === 'COMPLETED' && <p>Download concluído!</p>}
+                        {d.status === 'FAILED' && <p>Download falhou.</p>}
                         <ProgressBar 
-                            now={d.progress} 
-                            label={`${Math.round(d.progress)}%`} 
+                            now={d.progressPercentage ?? 0} 
+                            label={`${Math.round(d.progressPercentage ?? 0)}%`} 
                             variant={d.status === 'FAILED' ? 'danger' : 'success'} 
                             animated={d.status === 'IN_PROGRESS'} 
                         />

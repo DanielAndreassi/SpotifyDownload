@@ -1,6 +1,8 @@
 package com.spotifyweb.service;
 
 import com.spotifyweb.dto.PlaylistDTO;
+import com.spotifyweb.dto.AlbumDTO;
+import com.spotifyweb.dto.AlbumDetailDTO;
 import com.spotifyweb.entity.User;
 import com.spotifyweb.repository.UserRepository;
 import org.apache.hc.core5.http.ParseException;
@@ -16,12 +18,17 @@ import se.michaelthelin.spotify.model_objects.credentials.AuthorizationCodeCrede
 import se.michaelthelin.spotify.model_objects.specification.*;
 import se.michaelthelin.spotify.model_objects.specification.TrackSimplified;
 import se.michaelthelin.spotify.model_objects.specification.SavedAlbum;
+import se.michaelthelin.spotify.model_objects.specification.AlbumSimplified;
+import se.michaelthelin.spotify.model_objects.specification.ArtistSimplified;
+import se.michaelthelin.spotify.model_objects.specification.TrackSimplified;
+import se.michaelthelin.spotify.model_objects.specification.SavedAlbum;
 
 import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class SpotifyService {
@@ -177,17 +184,22 @@ public class SpotifyService {
     }
 
     public List<Track> getAlbumTracks(User user, String albumId) throws IOException, SpotifyWebApiException, ParseException {
+        Album album = getAlbum(user, albumId);
+        return getAlbumTracks(user, album);
+    }
+
+    public List<Track> getAlbumTracks(User user, Album album) throws IOException, SpotifyWebApiException, ParseException {
         SpotifyApi spotifyApi = getApiForUser(user);
         List<Track> tracks = new ArrayList<>();
-        Paging<TrackSimplified> page = spotifyApi.getAlbumsTracks(albumId).limit(50).build().execute();
-        appendAlbumTracks(tracks, page);
+        Paging<TrackSimplified> page = spotifyApi.getAlbumsTracks(album.getId()).limit(50).build().execute();
+        appendAlbumTracks(album, tracks, page);
         while (page.getNext() != null) {
-            page = spotifyApi.getAlbumsTracks(albumId)
+            page = spotifyApi.getAlbumsTracks(album.getId())
                     .limit(50)
                     .offset(page.getOffset() + page.getLimit())
                     .build()
                     .execute();
-            appendAlbumTracks(tracks, page);
+            appendAlbumTracks(album, tracks, page);
         }
         return tracks;
     }
@@ -214,6 +226,31 @@ public class SpotifyService {
         return albums;
     }
 
+    public AlbumDetailDTO getAlbumDetail(User user, String albumId) throws IOException, SpotifyWebApiException, ParseException {
+        Album album = getAlbum(user, albumId);
+        List<Track> tracks = getAlbumTracks(user, album);
+
+        AlbumDTO albumDTO = new AlbumDTO(
+                album.getId(),
+                album.getName() != null ? album.getName() : "Álbum sem nome",
+                album.getArtists() != null ? Arrays.stream(album.getArtists()).map(ArtistSimplified::getName).collect(Collectors.toList()) : List.of("Desconhecido"),
+                album.getTracks() != null ? album.getTracks().getTotal() : tracks.size(),
+                album.getImages() != null && album.getImages().length > 0 ? album.getImages()[0].getUrl() : null,
+                album.getReleaseDate()
+        );
+
+        List<AlbumDetailDTO.TrackDTO> trackDTOs = tracks.stream()
+                .map(t -> new AlbumDetailDTO.TrackDTO(
+                        t.getId(),
+                        t.getName(),
+                        t.getDurationMs(),
+                        Arrays.stream(t.getArtists()).map(ArtistSimplified::getName).collect(Collectors.joining(", "))
+                ))
+                .collect(Collectors.toList());
+
+        return new AlbumDetailDTO(albumDTO, trackDTOs);
+    }
+
     public List<Track> getTopTracks(User user, int limit) throws IOException, SpotifyWebApiException, ParseException {
         SpotifyApi spotifyApi = getApiForUser(user);
         Paging<Track> topTracks = spotifyApi.getUsersTopTracks().limit(Math.min(limit, 50)).build().execute();
@@ -237,7 +274,7 @@ public class SpotifyService {
         return getApiForUser(user).getArtist(artistId).build().execute();
     }
 
-    private void appendAlbumTracks(List<Track> target, Paging<TrackSimplified> page) {
+    private void appendAlbumTracks(Album album, List<Track> target, Paging<TrackSimplified> page) {
         if (page == null || page.getItems() == null) {
             return;
         }
@@ -248,6 +285,11 @@ public class SpotifyService {
                     .setName(simplified.getName())
                     .setArtists(simplified.getArtists())
                     .setDurationMs(simplified.getDurationMs())
+                    .setAlbum(new AlbumSimplified.Builder()
+                            .setId(album.getId())
+                            .setName(album.getName())
+                            .setImages(album.getImages())
+                            .build())
                     .build();
             target.add(track);
         }

@@ -4,6 +4,7 @@ import { DownloadQueueProvider } from './context/DownloadQueueContext';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import PlaylistDetailPage from './pages/PlaylistDetailPage';
+import AlbumDetailPage from './pages/AlbumDetailPage';
 import DownloadQueuePage from './pages/DownloadQueuePage';
 import CallbackPage from './pages/CallbackPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -23,6 +24,7 @@ function App() {
                         <Route element={<ProtectedRoute />}>
                             <Route path="/dashboard" element={<DashboardPage />} />
                             <Route path="/playlist/:id" element={<PlaylistDetailPage />} />
+                            <Route path="/album/:id" element={<AlbumDetailPage />} />
                             <Route path="/queue" element={<DownloadQueuePage />} />
                         </Route>
                     </Routes>

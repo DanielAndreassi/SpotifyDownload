@@ -71,7 +71,7 @@ public class DownloadService {
     public String downloadAlbumById(String albumId, User user) {
         try {
             Album album = spotifyService.getAlbum(user, albumId);
-            List<Track> tracks = spotifyService.getAlbumTracks(user, albumId);
+            List<Track> tracks = spotifyService.getAlbumTracks(user, album);
 
             String jobId = createJob(albumId, album.getName(), tracks.size(), user.getId());
             executor.submit(() -> executeTracksDownload(jobId, albumId, album.getName(), tracks));
