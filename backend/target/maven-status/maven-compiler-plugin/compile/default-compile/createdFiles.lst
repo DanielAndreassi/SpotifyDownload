@@ -3,6 +3,7 @@ com/spotifyweb/controller/PlaylistController.class
 com/spotifyweb/repository/DownloadJobRepository.class
 com/spotifyweb/dto/SpotifyConfigDTO.class
 com/spotifyweb/SpotifyDownloaderWebApplication.class
+com/spotifyweb/service/DownloadService$YtDlpException.class
 com/spotifyweb/controller/AlbumController.class
 com/spotifyweb/entity/DownloadJob.class
 com/spotifyweb/entity/User$Role.class

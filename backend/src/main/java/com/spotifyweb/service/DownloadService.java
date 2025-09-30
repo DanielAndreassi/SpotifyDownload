@@ -15,6 +15,7 @@ import se.michaelthelin.spotify.model_objects.specification.Track;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -42,7 +43,7 @@ public class DownloadService {
         if (request.getUrl() == null || request.getUrl().isEmpty()) {
             throw new IllegalArgumentException("URL é obrigatório");
         }
-        String playlistId = request.getUrl().substring(request.getUrl().lastIndexOf('/') + 1);
+        String playlistId = extractSpotifyId(request.getUrl());
         return downloadPlaylistById(playlistId, user);
     }
 
@@ -64,7 +65,7 @@ public class DownloadService {
         if (request.getUrl() == null || request.getUrl().isEmpty()) {
             throw new IllegalArgumentException("URL é obrigatório");
         }
-        String albumId = request.getUrl().substring(request.getUrl().lastIndexOf('/') + 1);
+        String albumId = extractSpotifyId(request.getUrl());
         return downloadAlbumById(albumId, user);
     }
 
@@ -155,16 +156,38 @@ public class DownloadService {
         }
 
         try {
-            String youtubeUrl = searchYouTube(artistName + " " + trackName + " audio");
-            downloadFromYouTube(youtubeUrl, finalPath);
+            String searchQuery = buildYoutubeSearchQuery(artistName, trackName, false);
+            downloadFromYouTube(searchQuery, finalPath);
             job.setCompletedTracks(increment(job.getCompletedTracks()));
             downloadJobRepository.save(job);
+        } catch (YtDlpException primaryError) {
+            if (shouldRetryWithoutLive(primaryError, trackName)) {
+                String fallbackTrackName = removeLiveKeywords(trackName);
+                String fallbackQuery = buildYoutubeSearchQuery(artistName, fallbackTrackName, false);
+                logger.info("Tentando novamente sem marcadores ao vivo: {}", fallbackQuery);
+                try {
+                    downloadFromYouTube(fallbackQuery, finalPath);
+                    job.setCompletedTracks(increment(job.getCompletedTracks()));
+                    downloadJobRepository.save(job);
+                    return;
+                } catch (YtDlpException fallbackError) {
+                    registerFailure(job, trackName, fallbackError);
+                } catch (Exception fallbackError) {
+                    registerFailure(job, trackName, fallbackError);
+                }
+            } else {
+                registerFailure(job, trackName, primaryError);
+            }
         } catch (Exception e) {
-            logger.error("Falha ao baixar faixa {}", trackName, e);
-            job.setFailedTracks(increment(job.getFailedTracks()));
-            job.setErrorMessage(e.getMessage());
-            downloadJobRepository.save(job);
+            registerFailure(job, trackName, e);
         }
+    }
+
+    private void registerFailure(DownloadJob job, String trackName, Exception error) {
+        logger.error("Falha ao baixar faixa {}", trackName, error);
+        job.setFailedTracks(increment(job.getFailedTracks()));
+        job.setErrorMessage(truncateErrorMessage(error.getMessage()));
+        downloadJobRepository.save(job);
     }
 
     private int increment(Integer value) {
@@ -178,9 +201,34 @@ public class DownloadService {
         return name.replaceAll("[\\/:*?\"<>|]", "_");
     }
 
-    private String searchYouTube(String query) throws IOException {
-        logger.warn("Busca no YouTube é placeholder. Usando URL padrão.");
-        return "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    private String extractSpotifyId(String reference) {
+        if (reference == null) {
+            return null;
+        }
+        int index = reference.lastIndexOf('/');
+        String id = index >= 0 ? reference.substring(index + 1) : reference;
+        int queryIndex = id.indexOf('?');
+        if (queryIndex >= 0) {
+            id = id.substring(0, queryIndex);
+        }
+        return id;
+    }
+
+    private String buildYoutubeSearchQuery(String artistName, String trackName, boolean restrictToOfficialAudio) {
+        StringBuilder builder = new StringBuilder("ytsearch1:");
+        if (artistName != null && !artistName.isBlank()) {
+            builder.append('"').append(artistName.trim()).append('"');
+        }
+        if (trackName != null && !trackName.isBlank()) {
+            if (builder.charAt(builder.length() - 1) != ':') {
+                builder.append(' ');
+            }
+            builder.append('"').append(trackName.trim()).append('"');
+        }
+        if (restrictToOfficialAudio) {
+            builder.append(" áudio oficial");
+        }
+        return builder.toString();
     }
 
     private void downloadFromYouTube(String youtubeUrl, String outputPath) throws IOException, InterruptedException {
@@ -189,14 +237,85 @@ public class DownloadService {
                 "yt-dlp",
                 "-x",
                 "--audio-format", "mp3",
+                "--match-filter", "!is_short",
                 "-o", outputPath,
                 youtubeUrl
         );
+        processBuilder.redirectErrorStream(true);
         Process process = processBuilder.start();
+        String output = readProcessOutput(process);
         int exitCode = process.waitFor();
         if (exitCode != 0) {
-            throw new IOException("yt-dlp finalizou com código " + exitCode);
+            logger.warn("yt-dlp falhou ({}): {}", exitCode, output);
+            throw new YtDlpException(exitCode, output);
+        }
+        if (!output.isBlank()) {
+            logger.debug("yt-dlp saída: {}", output);
         }
         logger.info("Arquivo salvo em: {}", outputPath);
+    }
+
+    private String readProcessOutput(Process process) throws IOException {
+        try (var inputStream = process.getInputStream()) {
+            byte[] bytes = inputStream.readAllBytes();
+            return new String(bytes, StandardCharsets.UTF_8).trim();
+        }
+    }
+
+    private boolean shouldRetryWithoutLive(YtDlpException error, String trackName) {
+        if (error.getExitCode() != 1 || trackName == null) {
+            return false;
+        }
+        String normalized = trackName.toLowerCase();
+        if (normalized.contains("ao vivo") || normalized.contains("live")) {
+            String cleaned = removeLiveKeywords(trackName);
+            return cleaned != null && !cleaned.isBlank() && !cleaned.equals(trackName);
+        }
+        return false;
+    }
+
+    private String removeLiveKeywords(String name) {
+        if (name == null) {
+            return null;
+        }
+        String cleaned = name.replaceAll("(?i)\\s*[-–—]?\\s*(ao vivo|live)", "");
+        cleaned = cleaned.replaceAll("\\s+", " ").trim();
+        return cleaned.isBlank() ? name : cleaned;
+    }
+
+    private String truncateErrorMessage(String message) {
+        if (message == null) {
+            return null;
+        }
+        if (message.length() <= 255) {
+            return message;
+        }
+        return message.substring(0, 252) + "...";
+    }
+
+    private static class YtDlpException extends IOException {
+        private final int exitCode;
+        private final String output;
+
+        private YtDlpException(int exitCode, String output) {
+            super(buildMessage(exitCode, output));
+            this.exitCode = exitCode;
+            this.output = output;
+        }
+
+        int getExitCode() {
+            return exitCode;
+        }
+
+        String getOutput() {
+            return output;
+        }
+
+        private static String buildMessage(int exitCode, String output) {
+            if (output == null || output.isBlank()) {
+                return "yt-dlp finalizou com código " + exitCode;
+            }
+            return "yt-dlp finalizou com código " + exitCode + ": " + output;
+        }
     }
 }

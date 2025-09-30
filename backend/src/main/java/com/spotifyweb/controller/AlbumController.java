@@ -1,6 +1,7 @@
 package com.spotifyweb.controller;
 
 import com.spotifyweb.dto.AlbumDTO;
+import com.spotifyweb.dto.AlbumDetailDTO;
 import com.spotifyweb.entity.User;
 import com.spotifyweb.service.SpotifyService;
 import com.spotifyweb.service.UserService;
